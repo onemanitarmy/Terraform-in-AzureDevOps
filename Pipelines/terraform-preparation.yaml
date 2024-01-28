@@ -1,0 +1,64 @@
+# Preparations file to create Storage Account in advance to save .tfstate file.
+# Code in a nutshell:
+  # Select Service Connection
+  # Register Resource Provider Microsoft.Storage to create Storage resources in Azure.
+  # Create Resource Group
+  # Create Storage Account
+  # Create Blob Container and store Terraform .tfstate file.
+
+variables:
+    ServiceConnectionName: "<fill in your service connection name>"                 # Specify service connection name in Azure DevOps project settings.
+    SubscriptionName: "<fill in your subscription name>"                            # Specify Subscription name.
+    ResourceGroupName: "<fill in your resource group name store to .tfstate file>"  # Specify Resource Group name.
+    StorageAccountName: "<fill in your new storage account name>"                   # Specify Storage Account name.
+    Location: "<fill in your location>"                                             # Specify Location.
+
+trigger:
+  - none
+
+pool:
+  vmImage: "ubuntu-latest"
+
+
+stages:
+  - stage: TerraformState
+    jobs:
+    - job: Create_Storage_Account
+      continueOnError: false
+      steps:
+        - task: AzurePowerShell@5
+          displayName: 'Create Storage Account for Terraform State'
+          inputs:
+            azureSubscription: '$(ServiceConnectionName)' # Use Service Connection to deploy the code to Azure.
+            ScriptType: 'InlineScript'
+            Inline: |                                     # Powershell Inline commands
+              # Select Subscription to use
+              Select-AzSubscription -SubscriptionName '$(SubscriptionName)'
+
+              # Try to enable Resource Providers. 
+              Try {
+              Register-AzResourceProvider -ProviderNamespace Microsoft.Storage
+              }
+
+              # If already enabled, then send message that it is already enabled.
+              Catch {
+              echo "Resource Provider is already enabled."
+              }
+
+              # Create Resource Group.
+              New-AzResourceGroup -Name '$(ResourceGroupName)' -Location '$(Location)' -Force
+
+              # Create Storage Account
+              New-AzStorageAccount -ResourceGroupName '$(ResourceGroupName)' -Name '$(StorageAccountName)' -Location '$(Location)' -SkuName Standard_LRS -Kind StorageV2
+              
+              # Select Storage Account and create Blob Container.
+              $context = New-AzStorageContext -StorageAccountName '$(StorageAccountName)' -UseConnectedAccount
+              New-AzStorageContainer -Name 'tfstate' -Context $context
+              
+              # Select Storage Account and disabled Public Network Access.
+              Set-AzStorageAccount -ResourceGroupName '$(ResourceGroupName)' -Name '$(StorageAccountName)' -PublicNetworkAccess Disabled
+              
+              # Send message that the pipeline ran succesfully.
+              echo "Succesfully created Resource Provider, Resource Group, Storage Account, and Blob Container with .tfstate."
+
+            azurePowerShellVersion: 'LatestVersion'
