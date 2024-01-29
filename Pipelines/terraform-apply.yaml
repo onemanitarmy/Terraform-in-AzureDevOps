@@ -27,7 +27,7 @@ pool:
 
 stages:
 
-  # Performs Terraform Init, Validate, and Plan.
+  # Performs Terraform Init, Validate, and Apply.
   - stage: applicationinsights
     jobs:
     - job: validate
